@@ -2,7 +2,9 @@ package bot
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/babafemi99/bode-agent/pkg/lid"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -15,6 +17,54 @@ type Bot struct {
 
 	inbound  chan Message
 	outbound chan Message
+}
+
+func New(ctx context.Context, token string) error {
+	client, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		return fmt.Errorf("failed to get Bot: %w", err)
+	}
+
+	client.Debug = true
+
+	bot := &Bot{
+		BotID:    client.Self.ID,
+		ID:       lid.NewBot(),
+		Token:    token,
+		Client:   client,
+		inbound:  make(chan Message, 256),
+		outbound: make(chan Message, 256),
+	}
+
+	commands := tgbotapi.NewSetMyCommands(
+		tgbotapi.BotCommand{
+			Command:     "start",
+			Description: "Start using Bọ̀dé",
+		},
+		tgbotapi.BotCommand{
+			Command:     "help",
+			Description: "Show available commands",
+		},
+		tgbotapi.BotCommand{
+			Command:     "events",
+			Description: "View your events",
+		},
+		tgbotapi.BotCommand{
+			Command:     "context",
+			Description: "Show current context",
+		},
+	)
+
+	_, err = bot.Client.Request(commands)
+	if err != nil {
+		return fmt.Errorf("failed to request commands: %w", err)
+	}
+
+	go bot.receive(ctx)
+	go bot.send(ctx)
+	go bot.handle(ctx)
+
+	return nil
 }
 
 func (b *Bot) receive(ctx context.Context) {
@@ -91,3 +141,9 @@ func (b *Bot) handle(ctx context.Context) {
 		}
 	}
 }
+
+func (b *Bot) handleText(msg Message) {
+
+}
+
+// todo add a broadcast message for all the users eg updates and what not

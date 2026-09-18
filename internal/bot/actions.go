@@ -14,11 +14,11 @@ func (b *Bot) handleCommand(msg Message) {
 	case "start":
 		b.handleStart(msg)
 
-	case "help":
-		b.handleHelp(msg)
+	//case "help":
+	//	b.handleHelp(msg)
 
-	case "context":
-		b.handleContext(msg)
+	//case "context":
+	//	b.handleContext(msg)
 
 	default:
 		b.handleUnknownCommand(msg)
