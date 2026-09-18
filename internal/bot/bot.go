@@ -19,13 +19,16 @@ type Bot struct {
 	outbound chan Message
 }
 
-func New(ctx context.Context, token string) error {
+func New(ctx context.Context, token, mode string) (*Bot, error) {
 	client, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		return fmt.Errorf("failed to get Bot: %w", err)
+		return nil, fmt.Errorf("failed to get Bot: %w", err)
 	}
 
 	client.Debug = true
+	if mode == "" {
+		mode = "polling"
+	}
 
 	bot := &Bot{
 		BotID:    client.Self.ID,
@@ -51,20 +54,30 @@ func New(ctx context.Context, token string) error {
 		},
 		tgbotapi.BotCommand{
 			Command:     "context",
-			Description: "Show current context",
+			Description: "Show your current context",
 		},
 	)
 
 	_, err = bot.Client.Request(commands)
 	if err != nil {
-		return fmt.Errorf("failed to request commands: %w", err)
+		return nil, fmt.Errorf("failed to request commands: %w", err)
 	}
 
-	go bot.receive(ctx)
+	switch mode {
+	case "polling":
+		go bot.receive(ctx)
+
+	case "webhook":
+		// Webhook updates are received by the HTTP webhook handler.
+
+	default:
+		return nil, fmt.Errorf("unsupported bot mode: %s", mode)
+	}
+
 	go bot.send(ctx)
 	go bot.handle(ctx)
 
-	return nil
+	return bot, nil
 }
 
 func (b *Bot) receive(ctx context.Context) {
@@ -140,10 +153,6 @@ func (b *Bot) handle(ctx context.Context) {
 			return
 		}
 	}
-}
-
-func (b *Bot) handleText(msg Message) {
-
 }
 
 // todo add a broadcast message for all the users eg updates and what not

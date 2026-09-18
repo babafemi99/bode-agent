@@ -6,12 +6,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/babafemi99/bode-agent/internal/bot"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
-	"github.com/logrusorgru/aurora/v3"
 )
 
 func main() {
@@ -22,105 +23,85 @@ func main() {
 	)
 	defer stop()
 
-	fmt.Println(
-		aurora.Bold(
-			aurora.Magenta(banner),
-		),
-	)
-
-	fmt.Printf(
-		"  %-20s %s\n",
-		aurora.Cyan("Service:"),
-		aurora.White(ServiceName),
-	)
-
-	fmt.Printf(
-		"  %-20s %s\n",
-		aurora.Cyan("Transport:"),
-		aurora.White("Telegram"),
-	)
-
-	fmt.Printf(
-		"  %-20s %s\n",
-		aurora.Cyan("Mode:"),
-		aurora.White("Long Polling"),
-	)
-
-	fmt.Println()
-
 	if err := godotenv.Load(); err != nil {
 		log.Printf("warning: .env file not loaded: %v", err)
 	}
 
 	token := os.Getenv("KEY")
 	if token == "" {
-		fmt.Println(
-			aurora.Red(
-				aurora.Bold("  ✗ TELEGRAM_BOT_TOKEN is not set"),
-			),
-		)
-		os.Exit(1)
+		log.Fatal("KEY is not set")
 	}
 
-	fmt.Println(
-		aurora.Yellow("  ◌ Starting Bọ̀dé Bot..."),
-	)
-
-	if err := bot.New(ctx, token); err != nil {
-		fmt.Println(
-			aurora.Red(
-				aurora.Bold(
-					fmt.Sprintf("  ✗ Failed to start bot: %v", err),
-				),
-			),
-		)
-		os.Exit(1)
+	mode := os.Getenv("BOT_MODE")
+	if mode == "" {
+		log.Fatal("BOT_MODE is not set")
 	}
 
-	fmt.Println(
-		aurora.Green(
-			aurora.Bold("  ✓ Telegram Bot       Connected"),
-		),
-	)
+	port, err := strconv.ParseInt(os.Getenv("PORT"), 10, 64)
+	if err != nil {
+		log.Fatalf("invalid PORT: %v", err)
+	}
 
-	fmt.Println(
-		aurora.Green(
-			aurora.Bold("  ✓ Update Polling     Active"),
-		),
-	)
+	webhookURL := os.Getenv("WEBHOOK_URL")
 
-	fmt.Println(
-		aurora.Green(
-			aurora.Bold("  ✓ Message Handler    Running"),
-		),
-	)
+	if mode == "webhook" && webhookURL == "" {
+		log.Fatal("WEBHOOK_URL is not set")
+	}
 
-	fmt.Println()
+	b, err := bot.New(ctx, token, mode)
+	if err != nil {
+		log.Fatalf("failed to start bot: %v", err)
+	}
 
-	fmt.Println(
-		aurora.Bold(
-			aurora.Green("  ✓ Bọ̀dé Bot is ready. Let's go. 🚀"),
-		),
-	)
+	api := &API{
+		Port:           port,
+		Bot:            b,
+		WebhookHandler: bot.NewWebhookHandler(b),
+	}
 
-	fmt.Println()
+	if mode == "webhook" {
+		wh, err := tgbotapi.NewWebhook(
+			webhookURL + "/webhook",
+		)
+		if err != nil {
+			log.Fatalf("failed to create webhook: %v", err)
+		}
+
+		_, err = b.Client.Request(wh)
+		if err != nil {
+			log.Fatalf("failed to set webhook: %v", err)
+		}
+
+		log.Printf(
+			"telegram webhook registered: %s/webhook",
+			webhookURL,
+		)
+	}
+
+	go func() {
+		if err := api.Serve(); err != nil {
+			log.Printf("API server stopped: %v", err)
+			stop()
+		}
+	}()
+
+	fmt.Println("Bọ̀Dé Bot is running.")
 
 	<-ctx.Done()
 
 	fmt.Println()
-	fmt.Println(
-		aurora.Bold(
-			aurora.Yellow("  ⚠ Shutdown signal received"),
-		),
-	)
+	fmt.Println("  [!] Shutdown signal received")
+	fmt.Println("  Stopping Bọ̀Dé Bot...")
 
-	fmt.Println(
-		aurora.Faint("  Stopping Bọ̀dé Bot..."),
+	shutdownCtx, cancel := context.WithTimeout(
+		context.Background(),
+		5*time.Second,
 	)
+	defer cancel()
 
-	time.Sleep(500 * time.Millisecond)
+	if err := api.Shutdown(shutdownCtx); err != nil {
+		log.Printf("API shutdown error: %v", err)
+	}
 
-	fmt.Println(
-		aurora.Green("  ✓ Bọ̀dé Bot stopped."),
-	)
+	fmt.Println("  [+] Bọ̀Dé Bot stopped.")
 }

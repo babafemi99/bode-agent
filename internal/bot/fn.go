@@ -35,3 +35,7 @@ You can also just send me a message.`,
 		),
 	}
 }
+
+func (b *Bot) handleText(msg Message) {
+
+}
